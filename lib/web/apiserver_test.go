@@ -280,6 +280,14 @@ func (s *WebSuite) SetUpTest(c *C) {
 	})
 	c.Assert(err, IsNil)
 
+	proxyNodeWatcher, err := services.NewNodeWatcher(s.ctx, services.NodeWatcherConfig{
+		ResourceWatcherConfig: services.ResourceWatcherConfig{
+			Component: teleport.ComponentProxy,
+			Client:    s.proxyClient,
+		},
+	})
+	c.Assert(err, IsNil)
+
 	revTunServer, err := reversetunnel.NewServer(reversetunnel.Config{
 		ID:                    node.ID(),
 		Listener:              revTunListener,
@@ -293,6 +301,7 @@ func (s *WebSuite) SetUpTest(c *C) {
 		DirectClusters:        []reversetunnel.DirectCluster{{Name: s.server.ClusterName(), Client: s.proxyClient}},
 		DataDir:               c.MkDir(),
 		LockWatcher:           proxyLockWatcher,
+		NodeWatcher:           proxyNodeWatcher,
 	})
 	c.Assert(err, IsNil)
 	s.proxyTunnel = revTunServer
@@ -316,6 +325,7 @@ func (s *WebSuite) SetUpTest(c *C) {
 		regular.SetRestrictedSessionManager(&restricted.NOP{}),
 		regular.SetClock(s.clock),
 		regular.SetLockWatcher(proxyLockWatcher),
+		regular.SetNodeWatcher(proxyNodeWatcher),
 	)
 	c.Assert(err, IsNil)
 
@@ -3435,6 +3445,15 @@ func createProxy(ctx context.Context, t *testing.T, proxyID string, node *regula
 	require.NoError(t, err)
 	t.Cleanup(proxyLockWatcher.Close)
 
+	proxyNodeWatcher, err := services.NewNodeWatcher(ctx, services.NodeWatcherConfig{
+		ResourceWatcherConfig: services.ResourceWatcherConfig{
+			Component: teleport.ComponentProxy,
+			Client:    client,
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(proxyNodeWatcher.Close)
+
 	revTunServer, err := reversetunnel.NewServer(reversetunnel.Config{
 		ID:                    node.ID(),
 		Listener:              revTunListener,
@@ -3448,6 +3467,7 @@ func createProxy(ctx context.Context, t *testing.T, proxyID string, node *regula
 		DirectClusters:        []reversetunnel.DirectCluster{{Name: authServer.ClusterName(), Client: client}},
 		DataDir:               t.TempDir(),
 		LockWatcher:           proxyLockWatcher,
+		NodeWatcher:           proxyNodeWatcher,
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, revTunServer.Close()) })
@@ -3470,6 +3490,7 @@ func createProxy(ctx context.Context, t *testing.T, proxyID string, node *regula
 		regular.SetRestrictedSessionManager(&restricted.NOP{}),
 		regular.SetClock(clock),
 		regular.SetLockWatcher(proxyLockWatcher),
+		regular.SetNodeWatcher(proxyNodeWatcher),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, proxyServer.Close()) })

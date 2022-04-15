@@ -203,6 +203,9 @@ type Config struct {
 
 	// LockWatcher is a lock watcher.
 	LockWatcher *services.LockWatcher
+
+	// NodeWatcher is a node watcher.
+	NodeWatcher *services.NodeWatcher
 }
 
 // CheckAndSetDefaults checks parameters and sets default values
@@ -253,6 +256,9 @@ func (cfg *Config) CheckAndSetDefaults() error {
 	})
 	if cfg.LockWatcher == nil {
 		return trace.BadParameter("missing parameter LockWatcher")
+	}
+	if cfg.NodeWatcher == nil {
+		return trace.BadParameter("missing parameter NodeWatcher")
 	}
 	return nil
 }
@@ -1058,6 +1064,7 @@ func newRemoteSite(srv *server, domainName string, sconn ssh.Conn) (*remoteSite,
 
 	clt, _, err := remoteSite.getRemoteClient()
 	if err != nil {
+		cancel()
 		return nil, trace.Wrap(err)
 	}
 	remoteSite.remoteClient = clt
@@ -1069,6 +1076,7 @@ func newRemoteSite(srv *server, domainName string, sconn ssh.Conn) (*remoteSite,
 	var accessPointFunc auth.NewRemoteProxyCachingAccessPoint
 	ok, err := isPreV8Cluster(closeContext, sconn)
 	if err != nil {
+		cancel()
 		return nil, trace.Wrap(err)
 	}
 	if ok {
@@ -1082,16 +1090,29 @@ func newRemoteSite(srv *server, domainName string, sconn ssh.Conn) (*remoteSite,
 	// cluster this remote site provides access to.
 	accessPoint, err := accessPointFunc(clt, []string{"reverse", domainName})
 	if err != nil {
+		cancel()
 		return nil, trace.Wrap(err)
 	}
 	remoteSite.remoteAccessPoint = accessPoint
-
+	nodeWatcher, err := services.NewNodeWatcher(closeContext, services.NodeWatcherConfig{
+		ResourceWatcherConfig: services.ResourceWatcherConfig{
+			Component: srv.Component,
+			Client:    accessPoint,
+			Log:       srv.Log,
+		},
+	})
+	if err != nil {
+		cancel()
+		return nil, trace.Wrap(err)
+	}
+	remoteSite.nodeWatcher = nodeWatcher
 	// instantiate a cache of host certificates for the forwarding server. the
 	// certificate cache is created in each site (instead of creating it in
 	// reversetunnel.server and passing it along) so that the host certificate
 	// is signed by the correct certificate authority.
 	certificateCache, err := newHostCertificateCache(srv.Config.KeyGen, srv.localAuthClient)
 	if err != nil {
+		cancel()
 		return nil, trace.Wrap(err)
 	}
 	remoteSite.certificateCache = certificateCache
@@ -1104,6 +1125,7 @@ func newRemoteSite(srv *server, domainName string, sconn ssh.Conn) (*remoteSite,
 		Clock:  srv.Clock,
 	})
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
@@ -1117,6 +1139,7 @@ func newRemoteSite(srv *server, domainName string, sconn ssh.Conn) (*remoteSite,
 		Clock:  srv.Clock,
 	})
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 

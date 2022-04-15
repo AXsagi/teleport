@@ -24,6 +24,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gravitational/trace"
+	"github.com/jonboulle/clockwork"
+	log "github.com/sirupsen/logrus"
+	"golang.org/x/crypto/ssh"
+
 	"github.com/gravitational/teleport"
 	"github.com/gravitational/teleport/api/client"
 	"github.com/gravitational/teleport/api/constants"
@@ -34,10 +39,6 @@ import (
 	"github.com/gravitational/teleport/lib/services"
 	"github.com/gravitational/teleport/lib/srv/forward"
 	"github.com/gravitational/teleport/lib/utils"
-	"github.com/gravitational/trace"
-	"github.com/jonboulle/clockwork"
-	log "github.com/sirupsen/logrus"
-	"golang.org/x/crypto/ssh"
 )
 
 // remoteSite is a remote site that established the inbound connecton to
@@ -76,6 +77,9 @@ type remoteSite struct {
 	// remoteAccessPoint provides access to a cached subset of the Auth Server API of
 	// the remote cluster this site belongs to.
 	remoteAccessPoint auth.RemoteProxyAccessPoint
+
+	// nodeWatcher provides access the node set for the remote site
+	nodeWatcher *services.NodeWatcher
 
 	// remoteCA is the last remote certificate authority recorded by the client.
 	// It is used to detect CA rotation status changes. If the rotation
@@ -136,6 +140,10 @@ func (s *remoteSite) GetTunnelsCount() int {
 
 func (s *remoteSite) CachingAccessPoint() (auth.RemoteProxyAccessPoint, error) {
 	return s.remoteAccessPoint, nil
+}
+
+func (s *remoteSite) NodeWatcher() (*services.NodeWatcher, error) {
+	return s.nodeWatcher, nil
 }
 
 func (s *remoteSite) GetClient() (auth.ClientI, error) {
